@@ -1,5 +1,6 @@
-# Datera Internship – TechStore Data Platform  
+# Datera Internship – Proyecto Final
 End-to-End AWS Data Engineering Project
+E-Commerce TechStore ETL Pipeline
 
 Este repositorio contiene el desarrollo completo del proyecto final de la pasantía de Ingeniería de Datos de **Datera**.  
 El objetivo fue construir una plataforma de análisis end-to-end utilizando servicios de AWS y buenas prácticas de ingeniería de datos.
@@ -52,9 +53,13 @@ La arquitectura está basada en la consigna oficial del documento:
 ## Estructura del Repositorio
 
 docs/ # PDS, arquitectura, presentación, documentación técnica
+
 notebooks/ # EDA y scripts
+
 glue-jobs/ # Código de los Glue Jobs (ETL)
+
 athena-queries/ # Consultas SQL para análisis
+
 sql/ # Scripts para RDS
 
 ---
