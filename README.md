@@ -49,6 +49,12 @@ La arquitectura está basada en la consigna oficial del documento:
 
 ---
 
-## 📂 Estructura del Repositorio
+## Estructura del Repositorio
 
+docs/ # PDS, arquitectura, presentación, documentación técnica
+notebooks/ # EDA y scripts
+glue-jobs/ # Código de los Glue Jobs (ETL)
+athena-queries/ # Consultas SQL para análisis
+sql/ # Scripts para RDS
 
+---
