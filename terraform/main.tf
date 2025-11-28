@@ -103,18 +103,25 @@ resource "aws_iam_role_policy_attachment" "glue_service_role" {
 # Política inline simple para acceso a S3 y logs
 data "aws_iam_policy_document" "glue_extra_permissions" {
   statement {
+    effect = "Allow"
+
     actions = [
-      "s3:GetObject",
       "s3:PutObject",
-      "s3:ListBucket"
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:DeleteObject",          # 🔥 AGREGADO
+      "s3:DeleteObjectVersion"    # 🔥 AGREGADO
     ]
+
     resources = [
-      aws_s3_bucket.data_bucket.arn,
-      "${aws_s3_bucket.data_bucket.arn}/*"
+      "arn:aws:s3:::${var.dataset}-${var.username}-2025",
+      "arn:aws:s3:::${var.dataset}-${var.username}-2025/*"
     ]
   }
 
   statement {
+    effect = "Allow"
+
     actions = [
       "logs:CreateLogGroup",
       "logs:CreateLogStream",

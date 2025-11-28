@@ -1,124 +1,124 @@
 import sys
-import pandas as pd
-import s3fs
-import boto3
-from datetime import datetime
+from awsglue.utils import getResolvedOptions
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from awsglue.dynamicframe import DynamicFrame
+from pyspark.context import SparkContext
+import pyspark.sql.functions as F
 
-# ----------------------------
-# CONFIGURACIÓN DEL JOB
-# ----------------------------
-BUCKET = "ecommerce-ezequiel-2025"
-RAW_PREFIX = "raw"
-PROCESSED_PREFIX = "processed"
+# ------------------------
+# Parámetros del Job
+# ------------------------
+args = getResolvedOptions(sys.argv, ["JOB_NAME", "RAW_DB", "BUCKET"])
 
-# Tablas y su columna de fecha para particionado
-TABLE_DATE_COL = {
-    "orders": "order_time",
-    "order_items": None,
-    "products": None,
-    "reviews": "review_time",
-    "sessions": "start_time",
-    "customers": "signup_date",
-    "events": "timestamp"
+JOB_NAME = args["JOB_NAME"]
+RAW_DB = args["RAW_DB"]          # ej: "ecommerce_ezequiel_raw"
+BUCKET = args["BUCKET"]         # ej: "ecommerce-ezequiel-2025"
+
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+
+job = Job(glueContext)
+job.init(JOB_NAME, args)
+
+# ------------------------
+# Configuración de tablas
+# ------------------------
+# Nombre de tabla en el Catálogo  ->  columna de fecha  + nombre de salida
+TABLES_CONFIG = {
+    "orders_raw":      {"date_col": "order_time",   "output_name": "orders"},
+    "order_items_raw": {"date_col": None,           "output_name": "order_items"},
+    "products_raw":    {"date_col": None,           "output_name": "products"},
+    "reviews_raw":     {"date_col": "review_time",  "output_name": "reviews"},
+    "sessions_raw":    {"date_col": "start_time",   "output_name": "sessions"},
+    "customers_raw":   {"date_col": "signup_date",  "output_name": "customers"},
+    "events_raw":      {"date_col": "timestamp",    "output_name": "events"},
 }
 
-fs = s3fs.S3FileSystem()
 
-
-# ----------------------------
-# Casteo básico
-# ----------------------------
-def cast_types(df):
+def cast_common_types(df):
+    """
+    Reglas simples:
+    - *_id   -> BIGINT (long)
+    - *_usd  -> DOUBLE
+    """
     for col in df.columns:
-        col_l = col.lower()
-        if col_l.endswith("_id"):
-            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
-        if col_l.endswith("_usd"):
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+        cl = col.lower()
+        if cl.endswith("_id"):
+            df = df.withColumn(col, F.col(col).cast("long"))
+        if cl.endswith("_usd"):
+            df = df.withColumn(col, F.col(col).cast("double"))
     return df
 
 
-# ----------------------------
-# Procesar una tabla
-# ----------------------------
-def process_table(table_name):
+# ------------------------
+# Loop principal por tabla
+# ------------------------
+for table_name, cfg in TABLES_CONFIG.items():
+    date_col = cfg["date_col"]
+    output_name = cfg["output_name"]
 
-    date_col = TABLE_DATE_COL[table_name]
-    raw_path = f"{RAW_PREFIX}/{table_name}/"
+    print("\n=====================================")
+    print(f"Procesando tabla RAW: {table_name}")
+    print("=====================================")
 
-    print(f"\n📥 Buscando CSV en: s3://{BUCKET}/{raw_path}")
+    # 1) Leer desde el Glue Catalog con bookmarks
+    dy = glueContext.create_dynamic_frame.from_catalog(
+        database=RAW_DB,
+        table_name=table_name,
+        transformation_ctx=f"{table_name}_source"  # clave de bookmarks
+    )
 
-    # Buscar archivos CSV dentro de la carpeta
-    csv_files = fs.glob(f"{BUCKET}/{raw_path}*.csv")
+    # Si no hay datos nuevos, seguimos con la próxima tabla
+    if dy.count() == 0:
+        print(f"⚠️  Sin datos nuevos para {table_name} (bookmarks al día).")
+        continue
 
-    if not csv_files:
-        print(f"⚠️ No hay archivos en {raw_path}, se omite.")
-        return
+    # 2) DynamicFrame -> DataFrame para transformar
+    df = dy.toDF()
 
-    # Leer y unir CSVs
-    dfs = []
-    for file in csv_files:
-        print(f"   - Leyendo: s3://{file}")
-        df = pd.read_csv(f"s3://{file}")
-        dfs.append(df)
+    # Normalizar nombres de columnas
+    df = df.toDF(*[c.lower() for c in df.columns])
 
-    df = pd.concat(dfs, ignore_index=True)
-    df.columns = [c.lower() for c in df.columns]
-    df = cast_types(df)
+    # Casteo genérico
+    df = cast_common_types(df)
 
-    # ----------------------------
-    # Procesar particiones
-    # ----------------------------
-    if date_col and date_col.lower() in df.columns:
+    # 3) Manejo de fecha y particiones
+    partition_keys = []
 
+    if date_col is not None and date_col.lower() in df.columns:
         date_col = date_col.lower()
-        print(f"📅 Particionando por columna: {date_col}")
+        print(f"📅 Usando '{date_col}' como columna de fecha para particionar")
 
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-        df["year"] = df[date_col].dt.year
-        df["month"] = df[date_col].dt.month
-        df["day"] = df[date_col].dt.day
+        df = df.withColumn(date_col, F.to_timestamp(F.col(date_col)))
 
-        grouped = df.groupby(["year", "month", "day"])
+        df = df.withColumn("year", F.year(F.col(date_col)))
+        df = df.withColumn("month", F.month(F.col(date_col)))
+        df = df.withColumn("day", F.dayofmonth(F.col(date_col)))
 
-        for (year, month, day), group in grouped:
-
-            output_path = (
-                f"{BUCKET}/{PROCESSED_PREFIX}/{table_name}/"
-                f"year={year}/month={month}/day={day}/{table_name}.parquet"
-            )
-
-            print(f"💾 Guardando partición → s3://{output_path}")
-
-            group.to_parquet(
-                f"s3://{output_path}",
-                index=False
-            )
-
+        partition_keys = ["year", "month", "day"]
     else:
-        output_path = (
-            f"{BUCKET}/{PROCESSED_PREFIX}/{table_name}/{table_name}.parquet"
-        )
-        print(f"ℹ️ Tabla sin fecha → guardando sin particiones")
-        print(f"💾 s3://{output_path}")
+        print(f"ℹ️ {table_name} no tiene columna de fecha, se guarda sin partición")
 
-        df.to_parquet(f"s3://{output_path}", index=False)
+    # 4) Volver a DynamicFrame para escribir
+    dy_out = DynamicFrame.fromDF(df, glueContext, f"{output_name}_out")
 
+    # 5) Escribir a S3 processed/ como Parquet (append)
+    output_path = f"s3://{BUCKET}/processed/{output_name}/"
+    print(f"💾 Escribiendo salida en: {output_path}")
+    print(f"   Particiones: {partition_keys if partition_keys else 'ninguna'}")
 
-# ----------------------------
-# MAIN
-# ----------------------------
-def main():
-    print("\n🚀 Iniciando procesamiento CSV → Parquet")
+    connection_options = {"path": output_path}
+    if partition_keys:
+        connection_options["partitionKeys"] = partition_keys
 
-    for table in TABLE_DATE_COL.keys():
-        print("\n========================================")
-        print(f"Procesando: {table}")
-        print("========================================")
-        process_table(table)
+    glueContext.write_dynamic_frame.from_options(
+        frame=dy_out,
+        connection_type="s3",
+        format="parquet",
+        connection_options=connection_options,
+        transformation_ctx=f"{output_name}_sink"
+    )
 
-    print("\n🎉 ¡Listo! Todos los CSV fueron procesados.")
-
-
-if __name__ == "__main__":
-    main()
+job.commit()
