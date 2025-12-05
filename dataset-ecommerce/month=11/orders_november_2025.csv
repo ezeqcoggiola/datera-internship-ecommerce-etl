@@ -1,0 +1,16 @@
+order_id,customer_id,order_time,payment_method,discount_pct,subtotal_usd,total_usd,country,device,source
+33590,20010,2025-11-02T08:30:00,card,10,44.44,40.00,BR,mobile,organic
+33591,20011,2025-11-03T09:50:00,paypal,0,120.00,120.00,GB,desktop,email
+33592,20012,2025-11-04T11:50:00,card,5,78.95,75.00,DE,tablet,referral
+33593,20013,2025-11-05T20:15:00,card,15,210.59,180.00,US,mobile,organic
+33594,20014,2025-11-06T12:40:00,card,0,60.00,60.00,IT,desktop,paid
+33595,20015,2025-11-07T08:10:00,paypal,0,15.00,15.00,ES,mobile,social
+33596,20016,2025-11-09T23:10:00,paypal,0,59.99,59.99,FR,desktop,organic
+33597,20017,2025-11-10T17:00:00,card,0,89.00,89.00,SE,mobile,email
+33598,20018,2025-11-12T13:35:00,card,0,49.99,49.99,AU,tablet,organic
+33599,20019,2025-11-14T21:50:00,paypal,0,120.00,120.00,KR,mobile,referral
+33600,20020,2025-11-15T11:00:00,card,0,30.00,30.00,MX,desktop,organic
+33601,20021,2025-11-18T15:12:00,card,0,100.00,100.00,NZ,mobile,email
+33602,20022,2025-11-20T09:10:00,paypal,0,15.00,15.00,IT,tablet,organic
+33603,20023,2025-11-22T18:55:00,card,0,199.00,199.00,JP,mobile,organic
+33604,20024,2025-11-26T09:20:00,card,0,75.00,75.00,PL,tablet,paid

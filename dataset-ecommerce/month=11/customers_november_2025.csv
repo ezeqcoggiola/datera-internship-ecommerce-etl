@@ -1,0 +1,16 @@
+customer_id,name,email,country,age,signup_date,marketing_opt_in
+20010,Ana Pereira,ana.pereira@example.com,BR,28,2025-11-02,True
+20011,Liam O'Connor,liam.oconnor@example.co.uk,GB,34,2025-11-03,False
+20012,Sofia Müller,sofia.mueller@example.de,DE,41,2025-11-04,True
+20013,Noah Smith,noah.smith@example.com,US,22,2025-11-05,True
+20014,Emma Rossi,emma.rossi@example.it,IT,31,2025-11-06,False
+20015,Lucas García,lucas.garcia@example.es,ES,37,2025-11-07,True
+20016,Mia Dubois,mia.dubois@example.fr,FR,27,2025-11-09,True
+20017,Oscar Svensson,oscar.svensson@example.se,SE,45,2025-11-10,False
+20018,Chloe Brown,chloe.brown@example.com,AU,29,2025-11-12,True
+20019,Ethan Kim,ethan.kim@example.kr,KR,33,2025-11-14,False
+20020,Ava Lopez,ava.lopez@example.mx,MX,26,2025-11-15,True
+20021,Oliver Wilson,oliver.wilson@example.nz,NZ,38,2025-11-18,True
+20022,Isabella Conte,isabella.conte@example.it,IT,24,2025-11-20,False
+20023,Haruto Tanaka,haruto.tanaka@example.jp,JP,30,2025-11-22,True
+20024,Sara Novak,sara.novak@example.pl,PL,36,2025-11-25,False

@@ -1,0 +1,4 @@
+review_id,order_id,product_id,rating,review_text,review_time
+10783,33583,101,5,"Great product!",2025-12-04T00:00:00
+10784,33584,202,4,"Good value",2025-12-06T00:00:00
+10785,33585,303,5,"Highly recommend",2025-12-11T00:00:00

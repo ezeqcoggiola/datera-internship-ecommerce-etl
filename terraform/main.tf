@@ -1,138 +1,157 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 5.0"
     }
   }
-
-  required_version = ">= 1.3.0"
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
 }
 
-# -----------------------------
-#   S3 Bucket
-# -----------------------------
+data "aws_caller_identity" "current" {}
 
+// S3 bucket for the data lake (raw/, processed/, curated/, scripts/)
 resource "aws_s3_bucket" "data_bucket" {
-  bucket        = "${var.dataset}-${var.username}-2025"
+  bucket        = var.s3_bucket_name
   force_destroy = true
 
   tags = {
-    Owner   = var.username
+    Owner   = var.owner
     Project = var.dataset
   }
 }
 
-# Carpetas del bucket
+// Create empty folder objects so structure exists in console
 resource "aws_s3_object" "folders" {
-  for_each = toset([
-    "raw/",
-    "processed/",
-    "curated/"
-  ])
+  for_each = toset(["raw/", "processed/", "curated/", "scripts/"])
+  bucket   = aws_s3_bucket.data_bucket.id
+  key      = each.value
+  content  = ""
+}
+
+// Upload local Glue job scripts found in ../glue_jobs to s3://<bucket>/scripts/<file>
+locals {
+  glue_scripts = fileset("${path.module}/../glue_jobs", "*.py")
+}
+
+resource "aws_s3_object" "glue_scripts" {
+  for_each = toset(local.glue_scripts)
 
   bucket = aws_s3_bucket.data_bucket.id
-  key    = each.value
+  key    = "scripts/${each.value}"
+  source = "${path.module}/../glue_jobs/${each.value}"
+  etag   = filemd5("${path.module}/../glue_jobs/${each.value}")
 }
 
-# -----------------------------
-#   RDS MySQL
-# -----------------------------
+// Glue Data Catalog databases: one per data layer (raw, processed, curated)
+// Many Glue jobs and crawlers expect separate DBs per layer; this keeps schemas separated and makes permissions easier.
+resource "aws_glue_catalog_database" "raw_db" {
+  name        = var.raw_db_name
+  description = "Glue Catalog database for raw data - ${var.dataset}"
+}
 
+resource "aws_glue_catalog_database" "processed_db" {
+  name        = var.processed_db_name
+  description = "Glue Catalog database for processed data - ${var.dataset}"
+}
+
+resource "aws_glue_catalog_database" "curated_db" {
+  name        = var.curated_db_name
+  description = "Glue Catalog database for curated data - ${var.dataset}"
+}
+
+// RDS MySQL instance (development-minded defaults)
 resource "aws_db_instance" "mysql" {
-  identifier          = "${var.dataset}-${var.username}-db"
-  engine              = "mysql"
-  engine_version      = "8.0"
-  instance_class      = "db.t3.micro"
-  allocated_storage   = 20
-
-  username            = "admin"
-  password            = var.db_password
-
-  publicly_accessible = true      # Simple para el TP (después se puede endurecer)
-  skip_final_snapshot = true      # Para poder destruir sin snapshot
-  deletion_protection = false
+  allocated_storage       = var.rds_allocated_storage
+  engine                  = "mysql"
+  engine_version          = var.rds_engine_version
+  instance_class          = var.rds_instance_class
+  identifier              = "${var.dataset}-${var.owner}-db"
+  db_name                 = var.rds_db_name
+  username                = var.rds_username
+  password                = var.db_password
+  publicly_accessible     = true
+  vpc_security_group_ids  = [aws_security_group.rds_sg.id]
+  backup_retention_period = var.rds_backup_retention
+  skip_final_snapshot     = true
+  deletion_protection     = false
 
   tags = {
-    Owner   = var.username
+    Owner   = var.owner
     Project = var.dataset
   }
 }
 
-# -----------------------------
-#   Glue Data Catalog Database
-# -----------------------------
+// Glue Jobs: one per script that we uploaded to S3
+resource "aws_glue_job" "jobs" {
+  for_each = { for f in local.glue_scripts : replace(f, ".py", "") => f }
 
-resource "aws_glue_catalog_database" "this" {
-  name = "${var.dataset}_${var.username}"
+  name     = each.key
+  role_arn = aws_iam_role.glue_role.arn
 
-  # opcional pero queda prolijo:
-  description = "Glue Data Catalog database for ${var.dataset} - ${var.username}"
-}
+  command {
+    name            = "glueetl"
+    python_version  = "3"
+    script_location = "s3://${aws_s3_bucket.data_bucket.bucket}/scripts/${each.value}"
+  }
 
-# -----------------------------
-#   IAM Role para Glue Jobs
-# -----------------------------
+  default_arguments = {
+    "--TempDir"      = "s3://${aws_s3_bucket.data_bucket.bucket}/.glue/temp/"
+    "--RAW_DB"       = var.raw_db_name
+    "--PROCESSED_DB" = var.processed_db_name
+    "--CURATED_DB"   = var.curated_db_name
+    "--BUCKET"       = aws_s3_bucket.data_bucket.bucket
+  }
 
-data "aws_iam_policy_document" "glue_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
+  max_retries       = 0
+  glue_version      = var.glue_version
+  number_of_workers = var.glue_number_of_workers
+  worker_type       = var.glue_worker_type
 
-    principals {
-      type        = "Service"
-      identifiers = ["glue.amazonaws.com"]
-    }
+  tags = {
+    project = var.dataset
   }
 }
 
-resource "aws_iam_role" "glue_role" {
-  name               = "${var.dataset}-${var.username}-glue-role"
-  assume_role_policy = data.aws_iam_policy_document.glue_assume_role.json
-}
+// Glue Crawlers for raw/ processed/ curated/ paths
+resource "aws_glue_crawler" "crawler_raw" {
+  name          = "${var.dataset}-${var.owner}-crawler-raw"
+  database_name = aws_glue_catalog_database.raw_db.name
+  role          = aws_iam_role.glue_role.arn
 
-# Adjunta la política administrada de servicio Glue
-resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  role       = aws_iam_role.glue_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
-}
-
-# Política inline simple para acceso a S3 y logs
-data "aws_iam_policy_document" "glue_extra_permissions" {
-  statement {
-    effect = "Allow"
-
-    actions = [
-      "s3:PutObject",
-      "s3:GetObject",
-      "s3:ListBucket",
-      "s3:DeleteObject",          # 🔥 AGREGADO
-      "s3:DeleteObjectVersion"    # 🔥 AGREGADO
-    ]
-
-    resources = [
-      "arn:aws:s3:::${var.dataset}-${var.username}-2025",
-      "arn:aws:s3:::${var.dataset}-${var.username}-2025/*"
-    ]
-  }
-
-  statement {
-    effect = "Allow"
-
-    actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
-    ]
-    resources = ["*"]
+  s3_target {
+    path = "s3://${aws_s3_bucket.data_bucket.bucket}/raw/"
   }
 }
 
-resource "aws_iam_role_policy" "glue_extra" {
-  name   = "${var.dataset}-${var.username}-glue-extra"
-  role   = aws_iam_role.glue_role.id
-  policy = data.aws_iam_policy_document.glue_extra_permissions.json
+resource "aws_glue_crawler" "crawler_processed" {
+  name          = "${var.dataset}-${var.owner}-crawler-processed"
+  database_name = aws_glue_catalog_database.processed_db.name
+  role          = aws_iam_role.glue_role.arn
+
+  s3_target {
+    path = "s3://${aws_s3_bucket.data_bucket.bucket}/processed/"
+  }
+}
+
+resource "aws_glue_crawler" "crawler_curated" {
+  name          = "${var.dataset}-${var.owner}-crawler-curated"
+  database_name = aws_glue_catalog_database.curated_db.name
+  role          = aws_iam_role.glue_role.arn
+
+  s3_target {
+    path = "s3://${aws_s3_bucket.data_bucket.bucket}/curated/"
+  }
+}
+
+// Step Functions state machine using the JSON in the repo state_machine/
+resource "aws_sfn_state_machine" "ecommerce_sm" {
+  name     = "${var.dataset}-${var.owner}-state-machine"
+  role_arn = aws_iam_role.sfn_role.arn
+
+  definition = file("${path.module}/../state_machine/state_machine_ecommerce.json")
 }

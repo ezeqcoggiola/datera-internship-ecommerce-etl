@@ -1,65 +1,59 @@
-# Datera Internship – Proyecto Final
-End-to-End AWS Data Engineering Project
-E-Commerce TechStore ETL Pipeline
+# Datera Internship - Proyecto Final
+End-to-end AWS data engineering para e-commerce (TechStore ETL)
 
-Este repositorio contiene el desarrollo completo del proyecto final de la pasantía de Ingeniería de Datos de **Datera**.  
-El objetivo fue construir una plataforma de análisis end-to-end utilizando servicios de AWS y buenas prácticas de ingeniería de datos.
+Este repositorio contiene el desarrollo del proyecto final de la pasantia de Ingenieria de Datos en Datera. La meta es construir una plataforma analitica completa en AWS para un dataset ficticio de un negocio E-Commerce.
 
 ---
 
-## Objetivo del Proyecto
+## Arquitectura en pocas lineas
+- Data Lake en S3 con capas `raw/`, `processed/` (Parquet particionado) y `curated/`.
+- Glue ETL Jobs con bookmarks: crudo -> processed -> tablas curadas y carga a RDS.
+- Athena para consultas SQL rapidas y QuickSight para dashboards.
+- RDS MySQL como motor analitico final.
+- Orquestacion prevista con Step Functions + EventBridge al detectar archivos en `raw/`.
 
-Construir una arquitectura completa de análisis de datos para el dataset **TechStore (E-Commerce)** que incluya:
+## Componentes principales
+- Glue jobs (`glue_jobs/`)
+  - `job_ecommerce_1.py`: toma tablas raw del Catalog, normaliza tipos y escribe Parquet particionado por fecha en `processed/`.
+  - `job_ecommerce_2.py`: crea tablas curadas (facts de ordenes, order_items enriquecido, eventos) filtrando `year >= 2025`.
+  - `job_ecommerce_3.py`: castea processed y carga a RDS via JDBC; consolida `order_items` por `(order_id, product_id)`.
+- Terraform (`terraform/`): bucket de S3, bases del Glue Catalog, crawlers, Glue Jobs desde scripts en S3, RDS MySQL, VPC/SG, Step Function y regla de EventBridge.
+- Notebooks (`notebooks/`): `eda.ipynb` y `upload_files_s3.ipynb` para subir CSVs al bucket raw.
+- Dataset local (`dataset-ecommerce/`): CSVs de ejemplo para poblar `raw/` (ej. sesiones noviembre 2025).
+- SQL (`sql/create_base_tables_rds.sql`): DDL base para RDS.
+- State Machine (`state_machine/state_machine_ecommerce.json`): plantilla para definir el flujo Step Functions (completar segun la orquestacion deseada).
+- Docs (`docs/Datera_Internship_Proyecto_Final.pdf`): consigna oficial y diagrama de arquitectura.
 
-- Data Lake en Amazon S3 (raw / processed / curated)
-- ETL Jobs con AWS Glue (Python Shell y Glue ETL)
-- Procesamiento incremental y particionado por fecha
-- Análisis SQL con Amazon Athena
-- Dashboards interactivos con QuickSight
-- Carga de tablas finales curadas a Amazon RDS (motor analítico final)
+## Estructura del repositorio
+- `athena-queries/`: espacio para queries de analisis.
+- `glue_jobs/`: scripts de los Glue Jobs.
+- `notebooks/`: notebooks de EDA y utilidades.
+- `dataset-ecommerce/`: datos fuente en CSV organizados por carpeta/tabla.
+- `terraform/`: infraestructura IaC.
+- `state_machine/`: definicion de Step Functions.
+- `sql/`: scripts SQL para RDS.
+- `docs/`: documentacion y artefactos de presentacion.
 
-La arquitectura está basada en la consigna oficial del documento:
+## Despliegue rapido (Terraform)
+1) Requisitos: AWS CLI configurado, Terraform >= 1.5, credenciales con permisos para S3/Glue/RDS/Step Functions/IAM.
+2) Ajusta variables sensibles y nombres unicos en variables.tf
+   ```
+   s3_bucket_name    = "ecommerce-<tu-sufijo-unico>"
+   db_password       = "cambia_esta_clave"
+   developer_ip_cidr = "X.X.X.X/32" # tu IP publica para acceder a RDS
+   ```
+3) Provisiona:
+   ```
+   cd terraform
+   terraform init
+   terraform plan -out=tfplan
+   terraform apply tfplan
+   ```
 
-**[Datera Internship – Proyecto Final](./docs/Datera_Internship_Proyecto_Final.pdf)**
+## Ejecucion del pipeline
+1) Sube los CSV crudos a `s3://<bucket>/raw/<tabla>/`. Puedes usar `notebooks/upload_files_s3.ipynb` o AWS CLI.
+2) Se ejecuta el procesado de datos, orquestrado por StepFunctions.
+3) Espera a que termine el proceso. Se pode consultar en ejecuciones del StateMachine
+4) Consulta en Athena sobre las capas processed/curated y publica dashboards en QuickSight.
 
----
-
-## Arquitectura del Proyecto
-
-![Data Lake Architecture](./docs/architecture-diagram.png)
-
-### Componentes:
-
-- **S3 Data Lake**
-  - `raw/`: datos crudos (CSV por carpeta)
-  - `processed/`: datos limpios en Parquet + particionados
-  - `curated/`: tablas analíticas (hechos y dimensiones)
-
-- **AWS Glue Jobs**
-  - `job2-csv-cleaning.py`: transforma CSV → Parquet + particiones
-  - `job3-curated-tables.py`: construye tablas finales de análisis
-
-- **Amazon Athena**
-  - consultas SQL para análisis y creación de KPIs
-
-- **Amazon RDS**
-  - motor relacional final para dashboards y analítica liviana
-
-- **QuickSight**
-  - dashboards ejecutivos, cohortes, tendencias, conversión, etc.
-
----
-
-## Estructura del Repositorio
-
-docs/ # PDS, arquitectura, presentación, documentación técnica
-
-notebooks/ # EDA y scripts
-
-glue-jobs/ # Código de los Glue Jobs (ETL)
-
-athena-queries/ # Consultas SQL para análisis
-
-sql/ # Scripts para RDS
-
----
+Listo: tienes un pipeline end-to-end listo para iterar y extender.

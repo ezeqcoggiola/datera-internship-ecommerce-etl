@@ -1,0 +1,4 @@
+order_id,customer_id,order_time,payment_method,discount_pct,subtotal_usd,total_usd,country,device,source
+33583,20001,2025-12-02T09:25:00,card,10,50.00,45.00,US,mobile,organic
+33584,20002,2025-12-05T14:55:12,paypal,0,120.00,120.00,GB,desktop,email
+33585,20003,2025-12-10T20:31:00,paypal,0,120.00,120.00,DE,tablet,referral

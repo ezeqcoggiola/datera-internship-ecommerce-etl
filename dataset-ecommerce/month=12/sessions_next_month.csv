@@ -1,0 +1,4 @@
+session_id,customer_id,start_time,device,source,country
+120003,20001,2025-12-02T09:10:00,mobile,organic,US
+120004,20002,2025-12-05T14:45:30,desktop,email,GB
+120005,20003,2025-12-10T20:05:15,tablet,referral,DE
