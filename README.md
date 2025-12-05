@@ -1,7 +1,7 @@
 # Datera Internship - Proyecto Final
-End-to-end AWS data engineering para e-commerce (TechStore ETL)
+End-to-end AWS data engineering para un e-commerce (TechStore)
 
-Este repositorio contiene el desarrollo del proyecto final de la pasantia de Ingenieria de Datos en Datera. La meta es construir una plataforma analitica completa en AWS para un dataset ficticio de un negocio E-Commerce.
+Este repositorio contiene el desarrollo del proyecto final del Internship Program en Teracloud. La meta es construir una plataforma analitica completa en AWS para un dataset ficticio de un negocio E-Commerce.
 
 ---
 
